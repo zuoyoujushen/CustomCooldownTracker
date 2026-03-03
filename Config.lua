@@ -265,6 +265,7 @@ local function BuildSpellLibrary()
         for _, icon in pairs(spellContent.icons) do icon:Hide() end
     end
     spellContent.icons = {}
+    local uniqueSpells, spells = {}, {}
     local function AddSpell(spellID)
         if not spellID or uniqueSpells[spellID] then return end
         uniqueSpells[spellID] = true
