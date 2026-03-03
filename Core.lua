@@ -1,0 +1,66 @@
+local addonName, CCT = ...
+CCT.events = CreateFrame("Frame")
+CCT.trackedSpells = {} -- store spellIDs
+CCT.frames = {} -- UI frames
+
+CCT.events:RegisterEvent("ADDON_LOADED")
+CCT.events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+CCT.events:RegisterEvent("SPELL_UPDATE_USABLE")
+
+CCT.events:SetScript("OnEvent", function(self, event, ...)
+    if event == "ADDON_LOADED" then
+        local name = ...
+        if name == addonName then
+            -- Initialize default variables
+            CCT_DB = CCT_DB or { spells = {}, locked = false, point = "CENTER", x = 0, y = 0, size = 40, padding = 5 }
+            CCT_DB.size = CCT_DB.size or 40
+            CCT_DB.padding = CCT_DB.padding or 5
+            CCT.trackedSpells = CCT_DB.spells
+            CCT.UI:Initialize()
+            CCT:UpdateCooldowns()
+        end
+    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_USABLE" then
+        CCT:UpdateCooldowns()
+    end
+end)
+
+function CCT:UpdateCooldowns()
+    for i, spellID in ipairs(CCT.trackedSpells) do
+        local frame = CCT.frames[i]
+        if frame and frame.cooldown then
+            local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
+            local isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID)
+            local isPassive = IsPassiveSpell and IsPassiveSpell(spellID) or (C_Spell.IsSpellPassive and C_Spell.IsSpellPassive(spellID))
+            
+            -- C++ natively handles SecretNumbers when setting cooldowns
+            if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration then
+                frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
+            else
+                frame.cooldown:Clear()
+            end
+            
+            -- ULTIMATE WOW 12.0 GCD BYPASS (NO MATH, NO TAINT EVALUATION):
+            -- CooldownFrame C++ internals natively evaluate if duration > 0 and will automatically 
+            -- toggle `IsShown()` to true if the spell is actively cooling down, and `false` if not (duration 0).
+            -- By querying the frame visibility, we get a mathematically pure boolean safely evaluating the SecretNumber.
+            -- Combining this with the pure Lua boolean `isOnGCD`, we accurately detect real cooldowns!
+            local isCoolingDown = frame.cooldown:IsShown()
+            local isRealCD = isCoolingDown and (cooldownInfo and cooldownInfo.isOnGCD == false)
+            
+            -- Apply Cooldown Desaturation strictly ignoring passives
+            if isPassive then
+                frame.icon:SetDesaturated(false)
+            else
+                frame.icon:SetDesaturated(isRealCD or (not isUsable and not notEnoughMana))
+            end
+            
+            -- Apply Resource Insufficient (Purple Tint: 128, 128, 255) vs Normal
+            if notEnoughMana then
+                frame.icon:SetVertexColor(128/255, 128/255, 1)
+            else
+                frame.icon:SetVertexColor(1, 1, 1)
+            end
+        end
+    end
+end
+
