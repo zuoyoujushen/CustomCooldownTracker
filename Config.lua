@@ -1,8 +1,21 @@
 local addonName, CCT = ...
 
+-- ElvUI style panel builder
+local function ApplyFlatBackdrop(f)
+    if not f.SetBackdrop then Mixin(f, BackdropTemplateMixin) end
+    f:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 }
+    })
+    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
+end
+
 -- Main standalone window
-local panel = CreateFrame("Frame", "CCTConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-panel:SetSize(800, 500)
+local panel = CreateFrame("Frame", "CCTConfigFrame", UIParent, "BackdropTemplate")
+panel:SetSize(860, 540)
 panel:SetPoint("CENTER")
 panel:SetMovable(true)
 panel:EnableMouse(true)
@@ -10,114 +23,143 @@ panel:RegisterForDrag("LeftButton")
 panel:SetScript("OnDragStart", panel.StartMoving)
 panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
 panel:Hide()
-panel.TitleText:SetText("CustomCooldownTracker - 设置面板")
+ApplyFlatBackdrop(panel)
+
+-- Close Button
+local closeBtn = CreateFrame("Button", nil, panel)
+closeBtn:SetSize(24, 24)
+closeBtn:SetPoint("TOPRIGHT", -5, -5)
+ApplyFlatBackdrop(closeBtn)
+closeBtn:SetBackdropColor(0.8, 0.1, 0.1, 0.8)
+local closeText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+closeText:SetPoint("CENTER")
+closeText:SetText("X")
+closeBtn:SetScript("OnClick", function() panel:Hide() end)
+closeBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(1, 0.2, 0.2, 1) end)
+closeBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.8, 0.1, 0.1, 0.8) end)
+
+local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+title:SetPoint("TOP", 0, -12)
+title:SetText("Custom Cooldown Tracker")
 
 -- Lock Checkbox
 local lockCheck = CreateFrame("CheckButton", "CCTLockCheck", panel, "UICheckButtonTemplate")
-lockCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 15, -35)
+lockCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -45)
 lockCheck.Text = lockCheck:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 lockCheck.Text:SetPoint("LEFT", lockCheck, "RIGHT", 5, 0)
-lockCheck.Text:SetText("锁定技能监控条 (无法吸附或拖动)")
+lockCheck.Text:SetText("锁定主监控条 (无法吸附或拖动)")
+lockCheck.Text:SetFontObject("GameFontHighlight")
 lockCheck:SetScript("OnShow", function(self) self:SetChecked(CCT_DB.locked) end)
 lockCheck:SetScript("OnClick", function(self)
     CCT_DB.locked = self:GetChecked()
     CCT.UI:UpdateLockState()
 end)
 
--- Size EditBox
-local sizeLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-sizeLabel:SetPoint("TOPLEFT", lockCheck, "BOTTOMLEFT", 6, -15)
-sizeLabel:SetText("图标大小:")
-local sizeInput = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-sizeInput:SetSize(40, 20)
-sizeInput:SetPoint("LEFT", sizeLabel, "RIGHT", 10, 0)
-sizeInput:SetAutoFocus(false)
-sizeInput:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.size)) end)
-sizeInput:SetScript("OnEnterPressed", function(self)
+-- Flat EditBox builder
+local function CreateFlatEditBox(parent, width, labelText)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(width, 24)
+    local label = container:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT", container, "LEFT", 0, 0)
+    label:SetText(labelText)
+    local input = CreateFrame("EditBox", nil, container)
+    input:SetSize(40, 24)
+    input:SetPoint("LEFT", label, "RIGHT", 10, 0)
+    input:SetFontObject("ChatFontNormal")
+    input:SetAutoFocus(false)
+    input:SetTextInsets(5, 5, 0, 0)
+    ApplyFlatBackdrop(input)
+    input:SetBackdropColor(0, 0, 0, 0.5)
+    
+    container.label = label
+    container.input = input
+    return container
+end
+
+local sizeContainer = CreateFlatEditBox(panel, 120, "图标大小:")
+sizeContainer:SetPoint("TOPLEFT", lockCheck, "BOTTOMLEFT", 0, -15)
+sizeContainer.input:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.size)) end)
+sizeContainer.input:SetScript("OnEnterPressed", function(self)
     local val = tonumber(self:GetText())
     if val and val >= 10 and val <= 100 then
         CCT_DB.size = val
         CCT.UI:UpdateLayout()
+        CCT:RefreshTrackedList()
         self:ClearFocus()
-    else
-        self:SetText(tostring(CCT_DB.size))
-    end
+    else self:SetText(tostring(CCT_DB.size)) end
 end)
 
--- Padding EditBox
-local padLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-padLabel:SetPoint("LEFT", sizeInput, "RIGHT", 15, 0)
-padLabel:SetText("图标间距:")
-local padInput = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-padInput:SetSize(35, 20)
-padInput:SetPoint("LEFT", padLabel, "RIGHT", 5, 0)
-padInput:SetAutoFocus(false)
-padInput:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.padding)) end)
-padInput:SetScript("OnEnterPressed", function(self)
+local padContainer = CreateFlatEditBox(panel, 120, "图标间距:")
+padContainer:SetPoint("LEFT", sizeContainer, "RIGHT", 20, 0)
+padContainer.input:SetSize(30, 24)
+padContainer.input:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.padding)) end)
+padContainer.input:SetScript("OnEnterPressed", function(self)
     local val = tonumber(self:GetText())
     if val and val >= 0 and val <= 50 then
         CCT_DB.padding = val
         CCT.UI:UpdateLayout()
+        CCT:RefreshTrackedList()
         self:ClearFocus()
-    else
-        self:SetText(tostring(CCT_DB.padding))
-    end
+    else self:SetText(tostring(CCT_DB.padding)) end
 end)
 
--- Icons Per Line EditBox
-local iplLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-iplLabel:SetPoint("LEFT", padInput, "RIGHT", 15, 0)
-iplLabel:SetText("每行/列最大图标数:")
-local iplInput = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-iplInput:SetSize(35, 20)
-iplInput:SetPoint("LEFT", iplLabel, "RIGHT", 5, 0)
-iplInput:SetAutoFocus(false)
-iplInput:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.iconsPerLine or 10)) end)
-iplInput:SetScript("OnEnterPressed", function(self)
+local iplContainer = CreateFlatEditBox(panel, 160, "每行/列数量:")
+iplContainer:SetPoint("LEFT", padContainer, "RIGHT", 10, 0)
+iplContainer.input:SetSize(30, 24)
+iplContainer.input:SetScript("OnShow", function(self) self:SetText(tostring(CCT_DB.iconsPerLine or 10)) end)
+iplContainer.input:SetScript("OnEnterPressed", function(self)
     local val = tonumber(self:GetText())
     if val and val >= 1 and val <= 100 then
         CCT_DB.iconsPerLine = val
         CCT.UI:UpdateLayout()
-        CCT:RefreshTrackedList() -- Force the right-side grid to update immediately
+        CCT:RefreshTrackedList()
         self:ClearFocus()
-    else
-        self:SetText(tostring(CCT_DB.iconsPerLine or 10))
-    end
+    else self:SetText(tostring(CCT_DB.iconsPerLine or 10)) end
 end)
 
-local function CreateDropdown(parent, width, labelText, options, dbKey, defaultVal, callbackFn)
+-- Flat Dropdown Builder
+local activeDropdownList = nil
+local function CreateFlatDropdown(parent, width, labelText, options, dbKey, defaultVal, callbackFn)
     local container = CreateFrame("Frame", nil, parent)
-    container:SetSize(width, 22)
+    container:SetSize(width, 24)
     
     local label = container:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 0, 5)
+    label:SetPoint("LEFT", container, "LEFT", 0, 0)
     label:SetText(labelText)
     
-    local btn = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-    btn:SetAllPoints()
+    local btn = CreateFrame("Button", nil, container)
+    btn:SetSize(width - label:GetStringWidth() - 10, 24)
+    btn:SetPoint("LEFT", label, "RIGHT", 10, 0)
+    ApplyFlatBackdrop(btn)
+    btn:SetBackdropColor(0.2, 0.2, 0.2, 1)
     
-    local list = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-    local listHeight = #options * 20 + 8
-    list:SetSize(width, listHeight)
-    list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
-    list:SetBackdrop({
-        bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", 
-        edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", 
-        tile=true, tileSize=16, edgeSize=16, 
-        insets={left=4,right=4,top=4,bottom=4}
-    })
-    list:SetFrameLevel(btn:GetFrameLevel() + 10)
+    local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    btnText:SetPoint("CENTER")
+    
+    local list = CreateFrame("Frame", nil, btn)
+    local listHeight = #options * 24 + 2
+    list:SetSize(btn:GetWidth(), listHeight)
+    list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -1)
+    ApplyFlatBackdrop(list)
+    list:SetBackdropColor(0.1, 0.1, 0.1, 1)
+    list:SetFrameStrata("DIALOG")
     list:Hide()
     
     for i, opt in ipairs(options) do
-        local rb = CreateFrame("Button", nil, list, "UIPanelButtonTemplate")
-        rb:SetSize(width - 8, 20)
-        rb:SetPoint("TOP", 0, -4 - (i-1)*20)
-        rb:SetText(opt.v)
+        local rb = CreateFrame("Button", nil, list)
+        rb:SetSize(list:GetWidth() - 2, 24)
+        rb:SetPoint("TOP", 0, -1 - (i-1)*24)
+        local rt = rb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        rt:SetPoint("CENTER")
+        rt:SetText(opt.v)
+        
+        rb:SetScript("OnEnter", function(self) ApplyFlatBackdrop(self) self:SetBackdropColor(0.3, 0.3, 0.3, 1) end)
+        rb:SetScript("OnLeave", function(self) self:SetBackdrop(nil) end)
         rb:SetScript("OnClick", function()
             CCT_DB[dbKey] = opt.k
-            btn:SetText(opt.v)
+            btnText:SetText(opt.v)
             list:Hide()
+            activeDropdownList = nil
             if callbackFn then callbackFn() end
         end)
     end
@@ -125,81 +167,106 @@ local function CreateDropdown(parent, width, labelText, options, dbKey, defaultV
     btn:SetScript("OnShow", function(self)
         local cur = CCT_DB[dbKey] or defaultVal
         for _, opt in ipairs(options) do
-            if opt.k == cur then self:SetText(opt.v) break end
+            if opt.k == cur then btnText:SetText(opt.v) break end
         end
     end)
     btn:SetScript("OnClick", function()
-        if list:IsShown() then list:Hide() else list:Show() end
+        if activeDropdownList and activeDropdownList ~= list then activeDropdownList:Hide() end
+        if list:IsShown() then 
+            list:Hide()
+            activeDropdownList = nil
+        else 
+            list:Show() 
+            activeDropdownList = list
+        end
     end)
     
+    container.label = label
+    container.btn = btn
     return container
 end
 
--- Alignment & Orientation Buttons -> DROPDOWNS
-local alignOptions = {
-    {k="LEFT", v="左对齐"},
-    {k="CENTER", v="居中对齐"},
-    {k="RIGHT", v="右对齐"}
-}
-local alignDropdown = CreateDropdown(panel, 100, "对齐方式:", alignOptions, "align", "LEFT", function() CCT.UI:UpdateLayout() end)
-alignDropdown:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -30)
+-- Close dropdowns when clicking outside
+panel:SetScript("OnMouseDown", function()
+    if activeDropdownList then
+        activeDropdownList:Hide()
+        activeDropdownList = nil
+    end
+end)
 
-local orientOptions = {
-    {k="HORIZONTAL", v="水平"},
-    {k="VERTICAL", v="垂直"}
-}
-local orientDropdown = CreateDropdown(panel, 100, "排列方向:", orientOptions, "orientation", "HORIZONTAL", function() CCT.UI:UpdateLayout() end)
-orientDropdown:SetPoint("LEFT", alignDropdown, "RIGHT", 20, 0)
+local alignOptions = { {k="LEFT", v="左对齐"}, {k="CENTER", v="居中对齐"}, {k="RIGHT", v="右对齐"} }
+local alignDropdown = CreateFlatDropdown(panel, 160, "对齐方式:", alignOptions, "align", "LEFT", function() 
+    CCT.UI:UpdateLayout() 
+    CCT:RefreshTrackedList() 
+end)
+alignDropdown:SetPoint("TOPLEFT", sizeContainer, "BOTTOMLEFT", 0, -15)
 
--- Add via ID Box (Fallback)
-local idLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-idLabel:SetPoint("TOPLEFT", alignDropdown, "BOTTOMLEFT", 0, -20)
-idLabel:SetText("手动添加(法术ID):")
-local idInput = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-idInput:SetSize(80, 20)
-idInput:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
-idInput:SetAutoFocus(false)
-local addBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-addBtn:SetSize(60, 22)
-addBtn:SetPoint("LEFT", idInput, "RIGHT", 5, 0)
-addBtn:SetText("添 加")
+local orientOptions = { {k="HORIZONTAL", v="水平"}, {k="VERTICAL", v="垂直"} }
+local orientDropdown = CreateFlatDropdown(panel, 140, "排列方向:", orientOptions, "orientation", "HORIZONTAL", function() 
+    CCT.UI:UpdateLayout() 
+    CCT:RefreshTrackedList() 
+end)
+orientDropdown:SetPoint("LEFT", alignDropdown, "RIGHT", 40, 0)
+
+-- Add via ID Box
+local idContainer = CreateFlatEditBox(panel, 200, "手动添加(法术ID):")
+idContainer:SetPoint("LEFT", orientDropdown, "RIGHT", 40, 0)
+idContainer.input:SetSize(60, 24)
+
+local addBtn = CreateFrame("Button", nil, panel)
+addBtn:SetSize(60, 24)
+addBtn:SetPoint("LEFT", idContainer.input, "RIGHT", 5, 0)
+ApplyFlatBackdrop(addBtn)
+addBtn:SetBackdropColor(0.2, 0.5, 0.2, 1)
+local addText = addBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+addText:SetPoint("CENTER")
+addText:SetText("添 加")
+addBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.3, 0.7, 0.3, 1) end)
+addBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.2, 0.5, 0.2, 1) end)
 addBtn:SetScript("OnClick", function()
-    local id = tonumber(idInput:GetText())
+    local id = tonumber(idContainer.input:GetText())
     if id and C_Spell.GetSpellInfo(id) then
         C_Timer.After(0, function()
             table.insert(CCT.trackedSpells, id)
-            idInput:SetText("")
-            idInput:ClearFocus()
+            idContainer.input:SetText("")
+            idContainer.input:ClearFocus()
             CCT.UI:UpdateLayout()
             CCT:RefreshTrackedList()
         end)
     end
 end)
 
--- Left Side: Available Spells (Spellbook & Talents) Grid
-local libTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-libTitle:SetPoint("TOPLEFT", idLabel, "BOTTOMLEFT", 0, -30)
+-- Layout Grids Backgrounds
+local libTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+libTitle:SetPoint("TOPLEFT", alignDropdown, "BOTTOMLEFT", 0, -30)
 libTitle:SetText("个人技能/天赋库 (点击添加至监控)")
 
-local spellScroll = CreateFrame("ScrollFrame", "CCTSpellScroll", panel, "UIPanelScrollFrameTemplate")
-spellScroll:SetPoint("TOPLEFT", libTitle, "BOTTOMLEFT", 5, -10)
-spellScroll:SetSize(460, 260) -- Reduced height to prevent bleeding off screen
+local spellBg = CreateFrame("Frame", nil, panel)
+spellBg:SetPoint("TOPLEFT", libTitle, "BOTTOMLEFT", 0, -10)
+spellBg:SetSize(480, 320)
+ApplyFlatBackdrop(spellBg)
+spellBg:SetBackdropColor(0, 0, 0, 0.5)
+
+local spellScroll = CreateFrame("ScrollFrame", "CCTSpellScroll", spellBg, "UIPanelScrollFrameTemplate")
+spellScroll:SetPoint("TOPLEFT", 10, -10)
+spellScroll:SetPoint("BOTTOMRIGHT", -30, 10)
+
+-- Hide default scrollbar textures
+for _, child in ipairs({spellScroll:GetRegions()}) do
+    if child:IsObjectType("Texture") then child:SetAlpha(0) end
+end
 
 local spellContent = CreateFrame("Frame", nil, spellScroll)
-spellContent:SetSize(460, 260)
+spellContent:SetSize(440, 300)
 spellScroll:SetScrollChild(spellContent)
 
 local function BuildSpellLibrary()
-    -- Clear old icons
     if spellContent.icons then
         for _, icon in pairs(spellContent.icons) do icon:Hide() end
     end
     spellContent.icons = {}
-    
-    local uniqueSpells = {}
-    local spells = {}
+    local uniqueSpells, spells = {}, {}
 
-    -- 1. Grab from SpellBook (11.0 API)
     local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
     for skillLineIndex = 1, numSkillLines do
         local skillLineInfo = C_SpellBook.GetSpellBookSkillLineInfo(skillLineIndex)
@@ -219,7 +286,6 @@ local function BuildSpellLibrary()
         end
     end
     
-    -- 2. Grab from Talents (11.0 API)
     local configID = C_ClassTalents.GetActiveConfigID()
     if configID then
         local configInfo = C_Traits.GetConfigInfo(configID)
@@ -243,10 +309,7 @@ local function BuildSpellLibrary()
         end
     end
     
-    -- Draw Spells Grid
-    local ICON_SIZE = 36
-    local COLUMNS = 12
-    local PADDING = 2
+    local ICON_SIZE, COLUMNS, PADDING = 36, 11, 4
     local row, col = 0, 0
     
     for i, spellID in ipairs(spells) do
@@ -270,7 +333,6 @@ local function BuildSpellLibrary()
             btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
             btn:SetScript("OnClick", function()
-                -- Add to tracker on click
                 local clickedID = spellID
                 local spellName = info.name
                 C_Timer.After(0, function()
@@ -282,7 +344,6 @@ local function BuildSpellLibrary()
             end)
             
             table.insert(spellContent.icons, btn)
-            
             col = col + 1
             if col >= COLUMNS then
                 col = 0
@@ -290,17 +351,27 @@ local function BuildSpellLibrary()
             end
         end
     end
-    
     spellContent:SetHeight((row + 1) * (ICON_SIZE + PADDING))
 end
 
--- Ghost Icon For Native-Like Dragging
+-- TRACKED LIST Right Side
+local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+trackTitle:SetPoint("TOPLEFT", spellBg, "TOPRIGHT", 20, 0)
+trackTitle:SetText("当前监控序列 (左键拖拽，右键移除)")
+
+local trackBg = CreateFrame("Frame", nil, panel)
+trackBg:SetPoint("TOPLEFT", trackTitle, "BOTTOMLEFT", 0, -10)
+trackBg:SetSize(300, 320)
+ApplyFlatBackdrop(trackBg)
+trackBg:SetBackdropColor(0, 0, 0, 0.5)
+
 if not panel.ghostIcon then
     panel.ghostIcon = CreateFrame("Frame", nil, panel)
     panel.ghostIcon:SetSize(36, 36)
     panel.ghostIcon:SetFrameStrata("TOOLTIP")
     panel.ghostIcon.tex = panel.ghostIcon:CreateTexture(nil, "ARTWORK")
     panel.ghostIcon.tex:SetAllPoints()
+    panel.ghostIcon.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     panel.ghostIcon:Hide()
     panel.ghostIcon:SetScript("OnUpdate", function(self)
         local x, y = GetCursorPosition()
@@ -309,28 +380,6 @@ if not panel.ghostIcon then
     end)
 end
 
-local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
--- Fix overlap/spacing issue, anchor properly
-trackTitle:SetPoint("TOPLEFT", spellScroll, "TOPRIGHT", 25, 20)
-trackTitle:SetText("当前正在监控的技能")
-
-local trackSubtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-trackSubtitle:SetPoint("TOPLEFT", trackTitle, "BOTTOMLEFT", 0, -5)
-trackSubtitle:SetText("左键按住拖拽排序，右键点击移除")
-
-local trackBg = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-trackBg:SetPoint("TOPLEFT", trackSubtitle, "BOTTOMLEFT", -5, -10)
--- Width will be dynamic, height matches spellScroll nicely
-trackBg:SetSize(270, 260)
-trackBg:SetBackdrop({
-    bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 }
-})
-trackBg:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
-trackBg:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
-
 panel.trackIcons = {}
 function CCT:RefreshTrackedList()
     for _, iconBtn in ipairs(panel.trackIcons) do iconBtn:Hide() end
@@ -338,18 +387,22 @@ function CCT:RefreshTrackedList()
     local ICON_SIZE = 36
     local cols = CCT_DB.iconsPerLine or 10
     local PADDING = 4
+    local align = CCT_DB.align or "LEFT"
     
-    -- Dynamically expand trackBg width so icons are never cut off
-    local requiredWidth = cols * (ICON_SIZE + PADDING) + 12
-    trackBg:SetWidth(math.max(270, requiredWidth))
+    -- We keep trackBg size FIXED. It wraps naturally inside the box, respecting alignment horizontally.
+    local boxWidth = trackBg:GetWidth() - 20 -- 10px padding each side
     
-    local row, col = 0, 0
+    -- If user set 15 cols but it's physically wider than box width, we clamp `cols` for the display layout.
+    local maxColsPhysically = math.floor((boxWidth + PADDING) / (ICON_SIZE + PADDING))
+    local displayCols = math.min(cols, maxColsPhysically)
+    if displayCols < 1 then displayCols = 1 end
+    
+    local totalSpells = #CCT.trackedSpells
     
     for i, spellID in ipairs(CCT.trackedSpells) do
         local btn = panel.trackIcons[i]
         if not btn then
             btn = CreateFrame("Button", nil, trackBg)
-            btn:SetSize(ICON_SIZE, ICON_SIZE)
             
             local activeHighlight = btn:CreateTexture(nil, "HIGHLIGHT")
             activeHighlight:SetAllPoints()
@@ -360,7 +413,6 @@ function CCT:RefreshTrackedList()
             tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             btn.icon = tex
             
-            -- Native Drag and Drop in Config Track List
             btn:RegisterForDrag("LeftButton")
             btn:SetScript("OnDragStart", function(self)
                 self:SetAlpha(0.2)
@@ -371,16 +423,13 @@ function CCT:RefreshTrackedList()
             btn:SetScript("OnDragStop", function(self)
                 self:SetAlpha(1)
                 panel.ghostIcon:Hide()
-                
                 local draggedFrame = panel.draggedIcon
                 panel.draggedIcon = nil
                 
                 if draggedFrame then
                     local x, y = GetCursorPosition()
                     local scale = UIParent:GetEffectiveScale()
-                    x = x / scale
-                    y = y / scale
-                    
+                    x, y = x / scale, y / scale
                     local targetIndex = nil
                     for j, checkBtn in ipairs(panel.trackIcons) do
                         if checkBtn:IsShown() and checkBtn ~= draggedFrame then
@@ -400,7 +449,6 @@ function CCT:RefreshTrackedList()
                         table.remove(CCT.trackedSpells, fromIndex)
                         table.insert(CCT.trackedSpells, targetIndex, temp)
                         
-                        -- Add flash visual to target
                         local targetBtn = panel.trackIcons[targetIndex]
                         if targetBtn then
                             local flash = targetBtn:CreateTexture(nil, "OVERLAY")
@@ -408,7 +456,6 @@ function CCT:RefreshTrackedList()
                             flash:SetColorTexture(1, 1, 0, 0.6)
                             C_Timer.After(0.3, function() flash:Hide() end)
                         end
-                        
                         CCT.UI:UpdateLayout()
                         CCT:RefreshTrackedList()
                     end
@@ -422,7 +469,6 @@ function CCT:RefreshTrackedList()
             end)
             btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
-            -- Right click to remove! Left click is now for dragging
             btn:RegisterForClicks("RightButtonUp")
             btn:SetScript("OnClick", function(self, button)
                 if button == "RightButton" then
@@ -441,25 +487,34 @@ function CCT:RefreshTrackedList()
             panel.trackIcons[i] = btn
         end
         
+        btn:SetSize(ICON_SIZE, ICON_SIZE)
         btn.index = i
         btn.spellID = spellID
         local info = C_Spell.GetSpellInfo(spellID)
-        if info and info.iconID then
-            btn.icon:SetTexture(info.iconID)
-        else
-            btn.icon:SetTexture(134400)
+        btn.icon:SetTexture(info and info.iconID or 134400)
+        
+        -- Calculate Dynamic Position with Alignment inside trackBg
+        -- Row logic: calculate elements in this row
+        local rowIndex = math.floor((i - 1) / displayCols)
+        local colIndex = (i - 1) % displayCols
+        
+        -- Number of items in the current row
+        local itemsInThisRow = math.min(displayCols, totalSpells - rowIndex * displayCols)
+        local rowTotalWidth = itemsInThisRow * ICON_SIZE + (itemsInThisRow - 1) * PADDING
+        
+        local startX = 10
+        if align == "CENTER" then
+            startX = (trackBg:GetWidth() - rowTotalWidth) / 2
+        elseif align == "RIGHT" then
+            startX = trackBg:GetWidth() - 10 - rowTotalWidth
         end
         
-        -- Respect user's iconsPerLine choice
+        local xOffset = startX + colIndex * (ICON_SIZE + PADDING)
+        local yOffset = -10 - rowIndex * (ICON_SIZE + PADDING)
+        
         btn:ClearAllPoints()
-        btn:SetPoint("TOPLEFT", 10 + col * (ICON_SIZE + PADDING), -10 - row * (ICON_SIZE + PADDING))
+        btn:SetPoint("TOPLEFT", trackBg, "TOPLEFT", xOffset, yOffset)
         btn:Show()
-        
-        col = col + 1
-        if col >= cols then
-            col = 0
-            row = row + 1
-        end
     end
 end
 
@@ -470,9 +525,5 @@ end)
 
 SLASH_CCT1 = "/cct"
 SlashCmdList["CCT"] = function()
-    if panel:IsShown() then
-        panel:Hide()
-    else
-        panel:Show()
-    end
+    if panel:IsShown() then panel:Hide() else panel:Show() end
 end
