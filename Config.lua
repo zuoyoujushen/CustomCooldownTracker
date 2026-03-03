@@ -13,9 +13,11 @@ panel:Hide()
 panel.TitleText:SetText("CustomCooldownTracker - 设置面板")
 
 -- Lock Checkbox
-local lockCheck = CreateFrame("CheckButton", "CCTLockCheck", panel, "ChatConfigCheckButtonTemplate")
+local lockCheck = CreateFrame("CheckButton", "CCTLockCheck", panel, "UICheckButtonTemplate")
 lockCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 15, -35)
-_G[lockCheck:GetName() .. "Text"]:SetText(" 锁定技能监控条 (无法吸附或拖动)")
+lockCheck.Text = lockCheck:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+lockCheck.Text:SetPoint("LEFT", lockCheck, "RIGHT", 5, 0)
+lockCheck.Text:SetText("锁定技能监控条 (无法吸附或拖动)")
 lockCheck:SetScript("OnShow", function(self) self:SetChecked(CCT_DB.locked) end)
 lockCheck:SetScript("OnClick", function(self)
     CCT_DB.locked = self:GetChecked()
@@ -83,45 +85,75 @@ iplInput:SetScript("OnEnterPressed", function(self)
     end
 end)
 
--- Alignment & Orientation Buttons
-local alignBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-alignBtn:SetSize(80, 22)
-alignBtn:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -15)
-local aligns = {["LEFT"]="左对齐", ["CENTER"]="居中对齐", ["RIGHT"]="右对齐"}
-local alignOrder = {"LEFT", "CENTER", "RIGHT"}
-alignBtn:SetScript("OnShow", function(self)
-    CCT_DB.align = CCT_DB.align or "LEFT"
-    self:SetText(aligns[CCT_DB.align])
-end)
-alignBtn:SetScript("OnClick", function(self)
-    local nextAlign = "LEFT"
-    for i, a in ipairs(alignOrder) do
-        if a == CCT_DB.align then
-            nextAlign = alignOrder[(i % 3) + 1]
-            break
-        end
+local function CreateDropdown(parent, width, labelText, options, dbKey, defaultVal, callbackFn)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(width, 22)
+    
+    local label = container:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 0, 5)
+    label:SetText(labelText)
+    
+    local btn = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    btn:SetAllPoints()
+    
+    local list = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+    local listHeight = #options * 20 + 8
+    list:SetSize(width, listHeight)
+    list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+    list:SetBackdrop({
+        bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", 
+        edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", 
+        tile=true, tileSize=16, edgeSize=16, 
+        insets={left=4,right=4,top=4,bottom=4}
+    })
+    list:SetFrameLevel(btn:GetFrameLevel() + 10)
+    list:Hide()
+    
+    for i, opt in ipairs(options) do
+        local rb = CreateFrame("Button", nil, list, "UIPanelButtonTemplate")
+        rb:SetSize(width - 8, 20)
+        rb:SetPoint("TOP", 0, -4 - (i-1)*20)
+        rb:SetText(opt.v)
+        rb:SetScript("OnClick", function()
+            CCT_DB[dbKey] = opt.k
+            btn:SetText(opt.v)
+            list:Hide()
+            if callbackFn then callbackFn() end
+        end)
     end
-    CCT_DB.align = nextAlign
-    self:SetText(aligns[CCT_DB.align])
-    CCT.UI:UpdateLayout()
-end)
+    
+    btn:SetScript("OnShow", function(self)
+        local cur = CCT_DB[dbKey] or defaultVal
+        for _, opt in ipairs(options) do
+            if opt.k == cur then self:SetText(opt.v) break end
+        end
+    end)
+    btn:SetScript("OnClick", function()
+        if list:IsShown() then list:Hide() else list:Show() end
+    end)
+    
+    return container
+end
 
-local orientBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-orientBtn:SetSize(80, 22)
-orientBtn:SetPoint("LEFT", alignBtn, "RIGHT", 10, 0)
-orientBtn:SetScript("OnShow", function(self)
-    CCT_DB.orientation = CCT_DB.orientation or "HORIZONTAL"
-    self:SetText(CCT_DB.orientation == "HORIZONTAL" and "排列: 水平" or "排列: 垂直")
-end)
-orientBtn:SetScript("OnClick", function(self)
-    CCT_DB.orientation = (CCT_DB.orientation == "HORIZONTAL") and "VERTICAL" or "HORIZONTAL"
-    self:SetText(CCT_DB.orientation == "HORIZONTAL" and "排列: 水平" or "排列: 垂直")
-    CCT.UI:UpdateLayout()
-end)
+-- Alignment & Orientation Buttons -> DROPDOWNS
+local alignOptions = {
+    {k="LEFT", v="左对齐"},
+    {k="CENTER", v="居中对齐"},
+    {k="RIGHT", v="右对齐"}
+}
+local alignDropdown = CreateDropdown(panel, 100, "对齐方式:", alignOptions, "align", "LEFT", function() CCT.UI:UpdateLayout() end)
+alignDropdown:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -30)
+
+local orientOptions = {
+    {k="HORIZONTAL", v="水平"},
+    {k="VERTICAL", v="垂直"}
+}
+local orientDropdown = CreateDropdown(panel, 100, "排列方向:", orientOptions, "orientation", "HORIZONTAL", function() CCT.UI:UpdateLayout() end)
+orientDropdown:SetPoint("LEFT", alignDropdown, "RIGHT", 20, 0)
 
 -- Add via ID Box (Fallback)
 local idLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-idLabel:SetPoint("TOPLEFT", alignBtn, "BOTTOMLEFT", 0, -15)
+idLabel:SetPoint("TOPLEFT", alignDropdown, "BOTTOMLEFT", 0, -20)
 idLabel:SetText("手动添加(法术ID):")
 local idInput = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
 idInput:SetSize(80, 20)
@@ -151,10 +183,10 @@ libTitle:SetText("个人技能/天赋库 (点击添加至监控)")
 
 local spellScroll = CreateFrame("ScrollFrame", "CCTSpellScroll", panel, "UIPanelScrollFrameTemplate")
 spellScroll:SetPoint("TOPLEFT", libTitle, "BOTTOMLEFT", 5, -10)
-spellScroll:SetSize(460, 300)
+spellScroll:SetSize(460, 260) -- Reduced height to prevent bleeding off screen
 
 local spellContent = CreateFrame("Frame", nil, spellScroll)
-spellContent:SetSize(460, 300)
+spellContent:SetSize(460, 260)
 spellScroll:SetScrollChild(spellContent)
 
 local function BuildSpellLibrary()
@@ -262,8 +294,24 @@ local function BuildSpellLibrary()
     spellContent:SetHeight((row + 1) * (ICON_SIZE + PADDING))
 end
 
+-- Ghost Icon For Native-Like Dragging
+if not panel.ghostIcon then
+    panel.ghostIcon = CreateFrame("Frame", nil, panel)
+    panel.ghostIcon:SetSize(36, 36)
+    panel.ghostIcon:SetFrameStrata("TOOLTIP")
+    panel.ghostIcon.tex = panel.ghostIcon:CreateTexture(nil, "ARTWORK")
+    panel.ghostIcon.tex:SetAllPoints()
+    panel.ghostIcon:Hide()
+    panel.ghostIcon:SetScript("OnUpdate", function(self)
+        local x, y = GetCursorPosition()
+        local s = self:GetEffectiveScale()
+        self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x/s, y/s)
+    end)
+end
+
 local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-trackTitle:SetPoint("TOPLEFT", spellScroll, "TOPRIGHT", 25, 40)
+-- Fix overlap/spacing issue, anchor properly
+trackTitle:SetPoint("TOPLEFT", spellScroll, "TOPRIGHT", 25, 20)
 trackTitle:SetText("当前正在监控的技能")
 
 local trackSubtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
@@ -272,7 +320,8 @@ trackSubtitle:SetText("左键按住拖拽排序，右键点击移除")
 
 local trackBg = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 trackBg:SetPoint("TOPLEFT", trackSubtitle, "BOTTOMLEFT", -5, -10)
-trackBg:SetSize(270, 300)
+-- Width will be dynamic, height matches spellScroll nicely
+trackBg:SetSize(270, 260)
 trackBg:SetBackdrop({
     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -289,6 +338,11 @@ function CCT:RefreshTrackedList()
     local ICON_SIZE = 36
     local cols = CCT_DB.iconsPerLine or 10
     local PADDING = 4
+    
+    -- Dynamically expand trackBg width so icons are never cut off
+    local requiredWidth = cols * (ICON_SIZE + PADDING) + 12
+    trackBg:SetWidth(math.max(270, requiredWidth))
+    
     local row, col = 0, 0
     
     for i, spellID in ipairs(CCT.trackedSpells) do
@@ -309,11 +363,15 @@ function CCT:RefreshTrackedList()
             -- Native Drag and Drop in Config Track List
             btn:RegisterForDrag("LeftButton")
             btn:SetScript("OnDragStart", function(self)
-                self:SetAlpha(0.5)
+                self:SetAlpha(0.2)
                 panel.draggedIcon = self
+                panel.ghostIcon.tex:SetTexture(self.icon:GetTexture())
+                panel.ghostIcon:Show()
             end)
             btn:SetScript("OnDragStop", function(self)
                 self:SetAlpha(1)
+                panel.ghostIcon:Hide()
+                
                 local draggedFrame = panel.draggedIcon
                 panel.draggedIcon = nil
                 

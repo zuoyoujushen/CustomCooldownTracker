@@ -39,7 +39,8 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
             
             -- CONTINUOUS SYNC: Bypass Event Races by calling SetCooldown every 0.1s
             -- Native C++ UI ignores redundant SetCooldown calls for the same startTime
-            if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration and cooldownInfo.duration > 0 then
+            -- RE-FIx: Avoid `duration > 0` arithmetic evaluation which triggers Taint checking!
+            if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration then
                 frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
             else
                 frame.cooldown:Clear()
