@@ -35,13 +35,16 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
     for i, spellID in ipairs(CCT.trackedSpells) do
         local frame = CCT.frames[i]
         if frame and frame.cooldown then
-            local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
-            local isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID)
+            -- KEY FIX: WoW 11.0+ Talent overrides break basic spellID CD polling.
+            -- E.g., Warlock's base Dreadstalker ID returns 0 CD because a talent override ID is the one actually cast.
+            -- Passing the spell's resolved localized Name forces the API to fetch the active overriding CD.
+            local sInfo = C_Spell.GetSpellInfo(spellID)
+            local queryID = (sInfo and sInfo.name) or spellID
+            
+            local cooldownInfo = C_Spell.GetSpellCooldown(queryID)
+            local isUsable, notEnoughMana = C_Spell.IsSpellUsable(queryID)
             local isPassive = IsPassiveSpell and IsPassiveSpell(spellID) or (C_Spell.IsSpellPassive and C_Spell.IsSpellPassive(spellID))
             
-            -- Because CooldownFrame:SetCooldown is handled natively in C++, 
-            -- IsShown() might take a rendering cycle to update its boolean state.
-            -- Reading it consistently in OnUpdate ensures accuracy.
             local isCoolingDown = frame.cooldown:IsShown()
             local isRealCD = isCoolingDown and (cooldownInfo and cooldownInfo.isOnGCD == false)
             
@@ -51,19 +54,15 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
                 frame.icon:SetVertexColor(1, 1, 1)
             else
                 if isRealCD then
-                    -- Priority 1: Real Cooldown overrides lack of shards/mana
                     frame.icon:SetDesaturated(true)
                     frame.icon:SetVertexColor(1, 1, 1) -- Keep it clean gray, NOT muddy purple
                 elseif notEnoughMana then
-                    -- Priority 2: Not on CD, but you don't have enough Shards/Mana
                     frame.icon:SetDesaturated(false)
                     frame.icon:SetVertexColor(128/255, 128/255, 1) -- Distinctive Purple alert
                 elseif not isUsable then
-                    -- Priority 3: Not on CD, enough mana, but unusable (conditional skills missing target/buff)
                     frame.icon:SetDesaturated(true)
                     frame.icon:SetVertexColor(1, 1, 1) -- Generic Grayout
                 else
-                    -- Priority 4: Fully Ready
                     frame.icon:SetDesaturated(false)
                     frame.icon:SetVertexColor(1, 1, 1)
                 end
@@ -73,9 +72,6 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 function CCT:UpdateCooldowns()
-    -- Only handle setting the C++ spinner natively here.
-    -- Deferred by 50ms (or 10ms) just to ensure cache consistency, 
-    -- but no longer responsible for visual icon coloring.
     if CCT.isUpdating then return end
     CCT.isUpdating = true
     
@@ -86,7 +82,11 @@ function CCT:UpdateCooldowns()
         for i, spellID in ipairs(CCT.trackedSpells) do
             local frame = CCT.frames[i]
             if frame and frame.cooldown then
-                local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
+                -- Same override resolution here
+                local sInfo = C_Spell.GetSpellInfo(spellID)
+                local queryID = (sInfo and sInfo.name) or spellID
+                
+                local cooldownInfo = C_Spell.GetSpellCooldown(queryID)
                 if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration then
                     frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
                 else

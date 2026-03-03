@@ -76,6 +76,7 @@ iplInput:SetScript("OnEnterPressed", function(self)
     if val and val >= 1 and val <= 100 then
         CCT_DB.iconsPerLine = val
         CCT.UI:UpdateLayout()
+        CCT:RefreshTrackedList() -- Force the right-side grid to update immediately
         self:ClearFocus()
     else
         self:SetText(tostring(CCT_DB.iconsPerLine or 10))
@@ -261,13 +262,16 @@ local function BuildSpellLibrary()
     spellContent:SetHeight((row + 1) * (ICON_SIZE + PADDING))
 end
 
--- Right Side: Tracked Spells List
 local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 trackTitle:SetPoint("TOPLEFT", spellScroll, "TOPRIGHT", 25, 40)
 trackTitle:SetText("当前正在监控的技能")
 
+local trackSubtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+trackSubtitle:SetPoint("TOPLEFT", trackTitle, "BOTTOMLEFT", 0, -5)
+trackSubtitle:SetText("左键按住拖拽排序，右键点击移除")
+
 local trackBg = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-trackBg:SetPoint("TOPLEFT", trackTitle, "BOTTOMLEFT", -5, -10)
+trackBg:SetPoint("TOPLEFT", trackSubtitle, "BOTTOMLEFT", -5, -10)
 trackBg:SetSize(270, 300)
 trackBg:SetBackdrop({
     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -282,9 +286,9 @@ panel.trackIcons = {}
 function CCT:RefreshTrackedList()
     for _, iconBtn in ipairs(panel.trackIcons) do iconBtn:Hide() end
     
-    local ICON_SIZE = 24
-    local COLUMNS = 10
-    local PADDING = 2
+    local ICON_SIZE = 36
+    local cols = CCT_DB.iconsPerLine or 10
+    local PADDING = 4
     local row, col = 0, 0
     
     for i, spellID in ipairs(CCT.trackedSpells) do
@@ -293,10 +297,65 @@ function CCT:RefreshTrackedList()
             btn = CreateFrame("Button", nil, trackBg)
             btn:SetSize(ICON_SIZE, ICON_SIZE)
             
+            local activeHighlight = btn:CreateTexture(nil, "HIGHLIGHT")
+            activeHighlight:SetAllPoints()
+            activeHighlight:SetColorTexture(1, 1, 1, 0.3)
+            
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints()
             tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             btn.icon = tex
+            
+            -- Native Drag and Drop in Config Track List
+            btn:RegisterForDrag("LeftButton")
+            btn:SetScript("OnDragStart", function(self)
+                self:SetAlpha(0.5)
+                panel.draggedIcon = self
+            end)
+            btn:SetScript("OnDragStop", function(self)
+                self:SetAlpha(1)
+                local draggedFrame = panel.draggedIcon
+                panel.draggedIcon = nil
+                
+                if draggedFrame then
+                    local x, y = GetCursorPosition()
+                    local scale = UIParent:GetEffectiveScale()
+                    x = x / scale
+                    y = y / scale
+                    
+                    local targetIndex = nil
+                    for j, checkBtn in ipairs(panel.trackIcons) do
+                        if checkBtn:IsShown() and checkBtn ~= draggedFrame then
+                            local left, bottom, width, height = checkBtn:GetRect()
+                            if left and bottom and width and height then
+                                if x >= left and x <= left + width and y >= bottom and y <= bottom + height then
+                                    targetIndex = j
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    local fromIndex = draggedFrame.index
+                    if targetIndex and fromIndex and fromIndex ~= targetIndex then
+                        local temp = CCT.trackedSpells[fromIndex]
+                        table.remove(CCT.trackedSpells, fromIndex)
+                        table.insert(CCT.trackedSpells, targetIndex, temp)
+                        
+                        -- Add flash visual to target
+                        local targetBtn = panel.trackIcons[targetIndex]
+                        if targetBtn then
+                            local flash = targetBtn:CreateTexture(nil, "OVERLAY")
+                            flash:SetAllPoints()
+                            flash:SetColorTexture(1, 1, 0, 0.6)
+                            C_Timer.After(0.3, function() flash:Hide() end)
+                        end
+                        
+                        CCT.UI:UpdateLayout()
+                        CCT:RefreshTrackedList()
+                    end
+                end
+            end)
             
             btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -305,17 +364,20 @@ function CCT:RefreshTrackedList()
             end)
             btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
-            -- Left click to remove (silent or with print)
-            btn:SetScript("OnClick", function(self)
-                local idx = self.index
-                local sName = C_Spell.GetSpellInfo(self.spellID)
-                sName = sName and sName.name or self.spellID
-                C_Timer.After(0, function()
-                    table.remove(CCT.trackedSpells, idx)
-                    CCT.UI:UpdateLayout()
-                    CCT:RefreshTrackedList()
-                    print("|cFFFF0000[CCT]|r 将 " .. sName .. " 移出了监控面板。")
-                end)
+            -- Right click to remove! Left click is now for dragging
+            btn:RegisterForClicks("RightButtonUp")
+            btn:SetScript("OnClick", function(self, button)
+                if button == "RightButton" then
+                    local idx = self.index
+                    local sName = C_Spell.GetSpellInfo(self.spellID)
+                    sName = sName and sName.name or self.spellID
+                    C_Timer.After(0, function()
+                        table.remove(CCT.trackedSpells, idx)
+                        CCT.UI:UpdateLayout()
+                        CCT:RefreshTrackedList()
+                        print("|cFFFF0000[CCT]|r 将 " .. sName .. " 移出了监控面板。")
+                    end)
+                end
             end)
             
             panel.trackIcons[i] = btn
@@ -330,11 +392,13 @@ function CCT:RefreshTrackedList()
             btn.icon:SetTexture(134400)
         end
         
+        -- Respect user's iconsPerLine choice
+        btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", 10 + col * (ICON_SIZE + PADDING), -10 - row * (ICON_SIZE + PADDING))
         btn:Show()
         
         col = col + 1
-        if col >= COLUMNS then
+        if col >= cols then
             col = 0
             row = row + 1
         end
