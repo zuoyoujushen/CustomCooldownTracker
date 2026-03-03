@@ -384,18 +384,19 @@ panel.trackIcons = {}
 function CCT:RefreshTrackedList()
     for _, iconBtn in ipairs(panel.trackIcons) do iconBtn:Hide() end
     
-    local ICON_SIZE = 36
     local cols = CCT_DB.iconsPerLine or 10
     local PADDING = 4
     local align = CCT_DB.align or "LEFT"
     
-    -- We keep trackBg size FIXED. It wraps naturally inside the box, respecting alignment horizontally.
     local boxWidth = trackBg:GetWidth() - 20 -- 10px padding each side
     
-    -- If user set 15 cols but it's physically wider than box width, we clamp `cols` for the display layout.
-    local maxColsPhysically = math.floor((boxWidth + PADDING) / (ICON_SIZE + PADDING))
-    local displayCols = math.min(cols, maxColsPhysically)
-    if displayCols < 1 then displayCols = 1 end
+    -- Dynamic Icon Scaling: Fits exactly `cols` inside the boxWidth
+    -- Total width = cols * ICON_SIZE + (cols - 1) * PADDING
+    -- ICON_SIZE = (boxWidth - (cols - 1) * PADDING) / cols
+    local calcSize = (boxWidth - (cols - 1) * PADDING) / cols
+    local ICON_SIZE = math.floor(math.min(36, math.max(12, calcSize)))
+    
+    local displayCols = cols
     
     local totalSpells = #CCT.trackedSpells
     
