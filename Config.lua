@@ -265,7 +265,11 @@ local function BuildSpellLibrary()
         for _, icon in pairs(spellContent.icons) do icon:Hide() end
     end
     spellContent.icons = {}
-    local uniqueSpells, spells = {}, {}
+    local function AddSpell(spellID)
+        if not spellID or uniqueSpells[spellID] then return end
+        uniqueSpells[spellID] = true
+        table.insert(spells, spellID)
+    end
 
     local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
     for skillLineIndex = 1, numSkillLines do
@@ -277,9 +281,8 @@ local function BuildSpellLibrary()
                 
                 if spellType == Enum.SpellBookItemType.Spell or spellType == Enum.SpellBookItemType.FutureSpell then
                     local spellInfo = C_SpellBook.GetSpellBookItemInfo(slotIndex, Enum.SpellBookSpellBank.Player)
-                    if spellInfo and spellInfo.spellID and not uniqueSpells[spellInfo.spellID] then
-                        uniqueSpells[spellInfo.spellID] = true
-                        table.insert(spells, spellInfo.spellID)
+                    if spellInfo and spellInfo.spellID then
+                        AddSpell(spellInfo.spellID)
                     end
                 end
             end
@@ -294,13 +297,15 @@ local function BuildSpellLibrary()
                 local nodes = C_Traits.GetTreeNodes(treeID)
                 for _, nodeID in ipairs(nodes) do
                     local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-                    if nodeInfo and nodeInfo.activeEntry then
-                        local entryInfo = C_Traits.GetEntryInfo(configID, nodeInfo.activeEntry.entryID)
-                        if entryInfo and entryInfo.definitionID then
-                            local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
-                            if defInfo and defInfo.spellID and not uniqueSpells[defInfo.spellID] then
-                                uniqueSpells[defInfo.spellID] = true
-                                table.insert(spells, defInfo.spellID)
+                    if nodeInfo and nodeInfo.entryIDs then
+                        -- Iterate all entries to capture unlearned choice nodes too
+                        for _, entryID in ipairs(nodeInfo.entryIDs) do
+                            local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                            if entryInfo and entryInfo.definitionID then
+                                local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+                                if defInfo and defInfo.spellID then
+                                    AddSpell(defInfo.spellID)
+                                end
                             end
                         end
                     end
@@ -324,6 +329,15 @@ local function BuildSpellLibrary()
             tex:SetTexture(info.iconID)
             tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             btn.icon = tex
+            
+            local isKnown = IsPlayerSpell(spellID)
+            if not isKnown then
+                btn.icon:SetDesaturated(true)
+                btn.icon:SetVertexColor(0.4, 0.4, 0.4)
+            else
+                btn.icon:SetDesaturated(false)
+                btn.icon:SetVertexColor(1, 1, 1)
+            end
             
             btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")

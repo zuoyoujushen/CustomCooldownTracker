@@ -93,6 +93,15 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
             local chargeInfo = C_Spell.GetSpellCharges(spellID)
             if not chargeInfo then chargeInfo = C_Spell.GetSpellCharges(overrideID) end
             
+            local hasCharges = chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1
+            if frame.countText then
+                if hasCharges then
+                    frame.countText:SetText(chargeInfo.currentCharges)
+                else
+                    frame.countText:SetText("")
+                end
+            end
+            
             if chargeInfo and chargeInfo.cooldownStartTime and chargeInfo.cooldownDuration then
                 -- Dodge Taint from evaluating currentCharges < maxCharges by just blindly passing to SetCooldown!
                 frame.cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate or 1)
@@ -119,11 +128,18 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
             local isCoolingDown = frame.cooldown:IsShown()
             local isRealCD = isCoolingDown and not isOnGCD
             
+            local shouldGray = false
+            if hasCharges then
+                shouldGray = isRealCD and not isUsable
+            else
+                shouldGray = isRealCD
+            end
+            
             if isPassive then
                 frame.icon:SetDesaturated(false)
                 frame.icon:SetVertexColor(1, 1, 1)
             else
-                if isRealCD then
+                if shouldGray then
                     frame.icon:SetDesaturated(true)
                     frame.icon:SetVertexColor(1, 1, 1) -- Set CD Gray
                 elseif notEnoughMana then

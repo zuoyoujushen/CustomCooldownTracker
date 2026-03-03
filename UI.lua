@@ -138,6 +138,11 @@ function CCT.UI:UpdateLayout()
             cd:SetSwipeColor(0, 0, 0, 0.8)
             frame.cooldown = cd
             
+            local countText = frame:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+            countText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+            countText:SetJustifyH("RIGHT")
+            frame.countText = countText
+            
             frame:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetSpellByID(self.spellID)
