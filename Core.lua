@@ -17,10 +17,7 @@ CCT.events:SetScript("OnEvent", function(self, event, ...)
             CCT_DB.padding = CCT_DB.padding or 5
             CCT.trackedSpells = CCT_DB.spells
             CCT.UI:Initialize()
-            CCT:UpdateCooldowns()
         end
-    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_USABLE" then
-        CCT:UpdateCooldowns()
     end
 end)
 
@@ -35,36 +32,41 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
     for i, spellID in ipairs(CCT.trackedSpells) do
         local frame = CCT.frames[i]
         if frame and frame.cooldown then
-            -- KEY FIX: WoW 11.0+ Talent overrides break basic spellID CD polling.
-            -- E.g., Warlock's base Dreadstalker ID returns 0 CD because a talent override ID is the one actually cast.
-            -- Passing the spell's resolved localized Name forces the API to fetch the active overriding CD.
             local sInfo = C_Spell.GetSpellInfo(spellID)
             local queryID = (sInfo and sInfo.name) or spellID
             
             local cooldownInfo = C_Spell.GetSpellCooldown(queryID)
+            
+            -- CONTINUOUS SYNC: Bypass Event Races by calling SetCooldown every 0.1s
+            -- Native C++ UI ignores redundant SetCooldown calls for the same startTime
+            if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration and cooldownInfo.duration > 0 then
+                frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
+            else
+                frame.cooldown:Clear()
+            end
+            
             local isUsable, notEnoughMana = C_Spell.IsSpellUsable(queryID)
             local isPassive = IsPassiveSpell and IsPassiveSpell(spellID) or (C_Spell.IsSpellPassive and C_Spell.IsSpellPassive(spellID))
             
             local isCoolingDown = frame.cooldown:IsShown()
             local isRealCD = isCoolingDown and (cooldownInfo and cooldownInfo.isOnGCD == false)
             
-            -- VISUAL PRIORITY OVERRIDES
             if isPassive then
                 frame.icon:SetDesaturated(false)
                 frame.icon:SetVertexColor(1, 1, 1)
             else
                 if isRealCD then
                     frame.icon:SetDesaturated(true)
-                    frame.icon:SetVertexColor(1, 1, 1) -- Keep it clean gray, NOT muddy purple
+                    frame.icon:SetVertexColor(1, 1, 1) -- Set CD Gray
                 elseif notEnoughMana then
                     frame.icon:SetDesaturated(false)
-                    frame.icon:SetVertexColor(128/255, 128/255, 1) -- Distinctive Purple alert
+                    frame.icon:SetVertexColor(128/255, 128/255, 1) -- OOM Purple
                 elseif not isUsable then
-                    frame.icon:SetDesaturated(true)
-                    frame.icon:SetVertexColor(1, 1, 1) -- Generic Grayout
+                    frame.icon:SetDesaturated(true) 
+                    frame.icon:SetVertexColor(1, 1, 1) -- Unusable Gray
                 else
                     frame.icon:SetDesaturated(false)
-                    frame.icon:SetVertexColor(1, 1, 1)
+                    frame.icon:SetVertexColor(1, 1, 1) -- Ready
                 end
             end
         end
@@ -72,28 +74,5 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 function CCT:UpdateCooldowns()
-    if CCT.isUpdating then return end
-    CCT.isUpdating = true
-    
-    C_Timer.After(0.05, function()
-        CCT.isUpdating = false
-        if not CCT.trackedSpells then return end
-        
-        for i, spellID in ipairs(CCT.trackedSpells) do
-            local frame = CCT.frames[i]
-            if frame and frame.cooldown then
-                -- Same override resolution here
-                local sInfo = C_Spell.GetSpellInfo(spellID)
-                local queryID = (sInfo and sInfo.name) or spellID
-                
-                local cooldownInfo = C_Spell.GetSpellCooldown(queryID)
-                if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration then
-                    frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
-                else
-                    frame.cooldown:Clear()
-                end
-            end
-        end
-    end)
+    -- Deprecated: Handled entirely by OnUpdate now
 end
-
