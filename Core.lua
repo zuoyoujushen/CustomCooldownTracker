@@ -4,20 +4,42 @@ CCT.trackedSpells = {} -- store spellIDs
 CCT.frames = {} -- UI frames
 
 CCT.events:RegisterEvent("ADDON_LOADED")
+CCT.events:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 CCT.events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 CCT.events:RegisterEvent("SPELL_UPDATE_USABLE")
+
+function CCT:UpdateActiveSpecProfile()
+    local specIndex = GetSpecialization()
+    local specID = specIndex and GetSpecializationInfo(specIndex) or 0
+    if not CCT_DB.specs then CCT_DB.specs = {} end
+    if not CCT_DB.specs[specID] then
+        -- Default to the legacy spells list if this is the first time, or an empty list
+        CCT_DB.specs[specID] = CCT_DB.spells or {}
+    end
+    CCT.trackedSpells = CCT_DB.specs[specID]
+    
+    if CCT.UI and CCT.UI.UpdateLayout then
+        CCT.UI:UpdateLayout()
+    end
+    -- Also refresh the config UI if it's open
+    if CCTConfigFrame and CCTConfigFrame:IsShown() and CCT.RefreshTrackedList then
+        CCT:RefreshTrackedList()
+    end
+end
 
 CCT.events:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         local name = ...
         if name == addonName then
             -- Initialize default variables
-            CCT_DB = CCT_DB or { spells = {}, locked = false, point = "CENTER", x = 0, y = 0, size = 40, padding = 5 }
+            CCT_DB = CCT_DB or { spells = {}, specs = {}, locked = false, point = "CENTER", x = 0, y = 0, size = 40, padding = 5 }
             CCT_DB.size = CCT_DB.size or 40
             CCT_DB.padding = CCT_DB.padding or 5
-            CCT.trackedSpells = CCT_DB.spells
+            CCT:UpdateActiveSpecProfile()
             CCT.UI:Initialize()
         end
+    elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
+        CCT:UpdateActiveSpecProfile()
     end
 end)
 
@@ -71,13 +93,13 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
             local chargeInfo = C_Spell.GetSpellCharges(spellID)
             if not chargeInfo then chargeInfo = C_Spell.GetSpellCharges(overrideID) end
             
-            if chargeInfo and chargeInfo.currentCharges < chargeInfo.maxCharges then
-                if chargeInfo.cooldownStartTime and chargeInfo.cooldownDuration then
-                    frame.cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate or 1)
-                    if frame.cooldown:IsShown() then
-                        isOnGCD = false
-                        foundRealCD = true
-                    end
+            if chargeInfo and chargeInfo.cooldownStartTime and chargeInfo.cooldownDuration then
+                -- Dodge Taint from evaluating currentCharges < maxCharges by just blindly passing to SetCooldown!
+                frame.cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate or 1)
+                -- If it isn't cooling down, IsShown() perfectly evaluates to false natively in C++!
+                if frame.cooldown:IsShown() then
+                    isOnGCD = false
+                    foundRealCD = true
                 end
             end
             
