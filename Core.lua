@@ -90,13 +90,15 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
             trySetCD(overrideID)
             trySetCD(queryName)
             
-            local chargeInfo = C_Spell.GetSpellCharges(spellID)
-            if not chargeInfo then chargeInfo = C_Spell.GetSpellCharges(overrideID) end
+            -- Determine if spell has charges WITHOUT doing a numerical > 1 evaluation
+            local strMax = chargeInfo and chargeInfo.maxCharges and tostring(chargeInfo.maxCharges) or "0"
+            local strCur = chargeInfo and chargeInfo.currentCharges and tostring(chargeInfo.currentCharges) or "0"
             
-            local hasCharges = chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1
+            local hasCharges = strMax ~= "1" and strMax ~= "0"
+            
             if frame.countText then
                 if hasCharges then
-                    frame.countText:SetText(chargeInfo.currentCharges)
+                    frame.countText:SetText(strCur)
                 else
                     frame.countText:SetText("")
                 end
