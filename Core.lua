@@ -18,7 +18,7 @@ function CCT:UpdateActiveSpecProfile()
     end
     CCT.trackedSpells = CCT_DB.specs[specID]
     
-    if CCT.UI and CCT.UI.UpdateLayout then
+    if CCT.UI and CCT.UI.mainFrame and CCT.UI.UpdateLayout then
         CCT.UI:UpdateLayout()
     end
     -- Also refresh the config UI if it's open
