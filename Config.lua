@@ -355,14 +355,15 @@ local function BuildSpellLibrary()
 end
 
 -- TRACKED LIST Right Side
-local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-trackTitle:SetPoint("TOPLEFT", spellBg, "TOPRIGHT", 20, 0)
-trackTitle:SetText("当前监控序列 (左键拖拽，右键移除)")
-
 local trackBg = CreateFrame("Frame", nil, panel)
-trackBg:SetPoint("TOPLEFT", trackTitle, "BOTTOMLEFT", 0, -10)
+trackBg:SetPoint("TOPLEFT", spellBg, "TOPRIGHT", 20, 0)
 trackBg:SetSize(300, 320)
 ApplyFlatBackdrop(trackBg)
+trackBg:SetBackdropColor(0, 0, 0, 0.5)
+
+local trackTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+trackTitle:SetPoint("BOTTOMLEFT", trackBg, "TOPLEFT", 0, 5)
+trackTitle:SetText("当前监控序列 (左键拖拽，右键移除)")
 trackBg:SetBackdropColor(0, 0, 0, 0.5)
 
 if not panel.ghostIcon then
@@ -387,18 +388,34 @@ function CCT:RefreshTrackedList()
     local cols = CCT_DB.iconsPerLine or 10
     local PADDING = 4
     local align = CCT_DB.align or "LEFT"
+    local orient = CCT_DB.orientation or "HORIZONTAL"
     
-    local boxWidth = trackBg:GetWidth() - 20 -- 10px padding each side
+    local boxWidth = trackBg:GetWidth() - 20
+    local boxHeight = trackBg:GetHeight() - 20
     
-    -- Dynamic Icon Scaling: Fits exactly `cols` inside the boxWidth
-    -- Total width = cols * ICON_SIZE + (cols - 1) * PADDING
-    -- ICON_SIZE = (boxWidth - (cols - 1) * PADDING) / cols
-    local calcSize = (boxWidth - (cols - 1) * PADDING) / cols
-    local ICON_SIZE = math.floor(math.min(36, math.max(12, calcSize)))
-    
-    local displayCols = cols
+    local ICON_SIZE = 36
+    if orient == "HORIZONTAL" then
+        local calcSize = (boxWidth - (cols - 1) * PADDING) / cols
+        ICON_SIZE = math.floor(math.min(64, math.max(12, calcSize)))
+    else
+        local calcSize = (boxHeight - (cols - 1) * PADDING) / cols
+        ICON_SIZE = math.floor(math.min(64, math.max(12, calcSize)))
+    end
     
     local totalSpells = #CCT.trackedSpells
+    
+    local displayCols = cols
+    local numCols, numRows
+    if orient == "HORIZONTAL" then
+        numCols = math.min(totalSpells, cols)
+        numRows = math.ceil(totalSpells / cols)
+    else
+        numRows = math.min(totalSpells, cols)
+        numCols = math.ceil(totalSpells / cols)
+    end
+    
+    local totalGridW = numCols * ICON_SIZE + math.max(0, numCols - 1) * PADDING
+    local totalGridH = numRows * ICON_SIZE + math.max(0, numRows - 1) * PADDING
     
     for i, spellID in ipairs(CCT.trackedSpells) do
         local btn = panel.trackIcons[i]
@@ -494,24 +511,41 @@ function CCT:RefreshTrackedList()
         local info = C_Spell.GetSpellInfo(spellID)
         btn.icon:SetTexture(info and info.iconID or 134400)
         
-        -- Calculate Dynamic Position with Alignment inside trackBg
-        -- Row logic: calculate elements in this row
-        local rowIndex = math.floor((i - 1) / displayCols)
-        local colIndex = (i - 1) % displayCols
-        
-        -- Number of items in the current row
-        local itemsInThisRow = math.min(displayCols, totalSpells - rowIndex * displayCols)
-        local rowTotalWidth = itemsInThisRow * ICON_SIZE + (itemsInThisRow - 1) * PADDING
-        
-        local startX = 10
-        if align == "CENTER" then
-            startX = (trackBg:GetWidth() - rowTotalWidth) / 2
-        elseif align == "RIGHT" then
-            startX = trackBg:GetWidth() - 10 - rowTotalWidth
+        -- Calculate Dynamic Position
+        local xOffset, yOffset
+        if orient == "HORIZONTAL" then
+            local r = math.floor((i - 1) / cols)
+            local c = (i - 1) % cols
+            
+            local rowItems = (r == numRows - 1 and totalSpells % cols ~= 0) and (totalSpells % cols) or cols
+            local rowW = rowItems * ICON_SIZE + math.max(0, rowItems - 1) * PADDING
+            
+            local startX = 10
+            if align == "CENTER" then
+                startX = 10 + (boxWidth - rowW) / 2
+            elseif align == "RIGHT" then
+                startX = 10 + boxWidth - rowW
+            end
+            
+            xOffset = startX + c * (ICON_SIZE + PADDING)
+            yOffset = -10 - r * (ICON_SIZE + PADDING)
+        else
+            local c = math.floor((i - 1) / cols)
+            local r = (i - 1) % cols
+            
+            local colItems = (c == numCols - 1 and totalSpells % cols ~= 0) and (totalSpells % cols) or cols
+            local colH = colItems * ICON_SIZE + math.max(0, colItems - 1) * PADDING
+            
+            local startY = -10
+            if align == "CENTER" then
+                startY = -10 - (boxHeight - colH) / 2
+            elseif align == "RIGHT" then -- Reusing "Right" to mean "Bottom" for vertical layout
+                startY = -10 - boxHeight + colH
+            end
+            
+            xOffset = 10 + c * (ICON_SIZE + PADDING)
+            yOffset = startY - r * (ICON_SIZE + PADDING)
         end
-        
-        local xOffset = startX + colIndex * (ICON_SIZE + PADDING)
-        local yOffset = -10 - rowIndex * (ICON_SIZE + PADDING)
         
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", trackBg, "TOPLEFT", xOffset, yOffset)

@@ -33,24 +33,69 @@ CCT.events:SetScript("OnUpdate", function(self, elapsed)
         local frame = CCT.frames[i]
         if frame and frame.cooldown then
             local sInfo = C_Spell.GetSpellInfo(spellID)
-            local queryID = (sInfo and sInfo.name) or spellID
+            local queryName = sInfo and sInfo.name
             
-            local cooldownInfo = C_Spell.GetSpellCooldown(queryID)
-            
-            -- CONTINUOUS SYNC: Bypass Event Races by calling SetCooldown every 0.1s
-            -- Native C++ UI ignores redundant SetCooldown calls for the same startTime
-            -- RE-FIx: Avoid `duration > 0` arithmetic evaluation which triggers Taint checking!
-            if cooldownInfo and cooldownInfo.startTime and cooldownInfo.duration then
-                frame.cooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration, cooldownInfo.modRate)
-            else
-                frame.cooldown:Clear()
+            local overrideID = spellID
+            if C_Spell and C_Spell.GetOverrideSpell then
+                overrideID = C_Spell.GetOverrideSpell(spellID) or spellID
+            elseif _G.GetOverrideSpell then
+                overrideID = _G.GetOverrideSpell(spellID) or spellID
             end
             
-            local isUsable, notEnoughMana = C_Spell.IsSpellUsable(queryID)
+            local isOnGCD = false
+            local foundRealCD = false
+            local bestGCD = nil
+            
+            frame.cooldown:Clear()
+            
+            local function trySetCD(idOrName)
+                if foundRealCD or not idOrName then return end
+                local cd = C_Spell.GetSpellCooldown(idOrName)
+                if cd and cd.duration then
+                    frame.cooldown:SetCooldown(cd.startTime, cd.duration, cd.modRate)
+                    if frame.cooldown:IsShown() then
+                        if cd.isOnGCD then
+                            bestGCD = cd
+                        else
+                            isOnGCD = false
+                            foundRealCD = true
+                        end
+                    end
+                end
+            end
+            
+            trySetCD(spellID)
+            trySetCD(overrideID)
+            trySetCD(queryName)
+            
+            local chargeInfo = C_Spell.GetSpellCharges(spellID)
+            if not chargeInfo then chargeInfo = C_Spell.GetSpellCharges(overrideID) end
+            
+            if chargeInfo and chargeInfo.currentCharges < chargeInfo.maxCharges then
+                if chargeInfo.cooldownStartTime and chargeInfo.cooldownDuration then
+                    frame.cooldown:SetCooldown(chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration, chargeInfo.chargeModRate or 1)
+                    if frame.cooldown:IsShown() then
+                        isOnGCD = false
+                        foundRealCD = true
+                    end
+                end
+            end
+            
+            if not foundRealCD then
+                if bestGCD then
+                    frame.cooldown:SetCooldown(bestGCD.startTime, bestGCD.duration, bestGCD.modRate)
+                    isOnGCD = true
+                else
+                    frame.cooldown:Clear()
+                    isOnGCD = false
+                end
+            end
+            
+            local isUsable, notEnoughMana = C_Spell.IsSpellUsable(spellID)
             local isPassive = IsPassiveSpell and IsPassiveSpell(spellID) or (C_Spell.IsSpellPassive and C_Spell.IsSpellPassive(spellID))
             
             local isCoolingDown = frame.cooldown:IsShown()
-            local isRealCD = isCoolingDown and (cooldownInfo and cooldownInfo.isOnGCD == false)
+            local isRealCD = isCoolingDown and not isOnGCD
             
             if isPassive then
                 frame.icon:SetDesaturated(false)
